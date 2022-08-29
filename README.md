@@ -1,8 +1,12 @@
-# Docker Traffic Control
+# Kubernetes Traffic Control
 
-![Version](https://img.shields.io/badge/version-18.12-lightgrey.svg?style=flat)
-[![Docker pulls](https://img.shields.io/docker/pulls/lukaszlach/docker-tc.svg?label=docker+pulls)](https://hub.docker.com/r/lukaszlach/docker-tc)
-[![Docker stars](https://img.shields.io/docker/stars/lukaszlach/docker-tc.svg?label=docker+stars)](https://hub.docker.com/r/lukaszlach/docker-tc)
+## This Fork
+
+This is a fork of [lukaszlach/docker-tc](https://github.com/lukaszlach/docker-tc) for compatibility in a kubernetes setup with [Canal](https://kops.sigs.k8s.io/networking/canal/).
+
+Credits also go to [TSchellien](https://github.com/lukaszlach/docker-tc/issues/7).
+
+## Intro
 
 **Docker Traffic Control** allows to set a rate limit on the container network and can emulate network conditions like delay, packet loss, duplication, and corrupt for the Docker containers, all that basing only on labels. [HTTP API](#http-api) allows to [fetch](#get) and [pause](#delete) existing rules and to [manually overwrite](#post) them, [command-line interface](#command-line) is also available. **Project is written entirely in Bash** and is distributed as a [Docker image](https://hub.docker.com/r/lukaszlach/docker-tc/).
 
