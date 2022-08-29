@@ -2,7 +2,7 @@
 REQUEST=$1
 METHOD=$(jq -r '.Method' <(echo "$REQUEST"))
 URL=$(jq -r '.URL' <(echo "$REQUEST"))
-URL_PATH=$(echo "$URL" | sed 's/\?.*$//')
+URL_PATH=$(echo "$URL" | sed 's/?.*$//')
 ACTION=$(echo "$URL_PATH" | cut -d/ -f2)
 PARAM1=$(echo "$URL_PATH" | cut -d/ -f3)
 BODY=$(jq -r '.Body' <(echo "$REQUEST"))
