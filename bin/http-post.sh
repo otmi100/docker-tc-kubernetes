@@ -36,24 +36,24 @@ if [ -z "$NETM_OPTIONS" ] && [ -z "$TBF_OPTIONS" ]; then
     exit 0
 fi
 OPTIONS_LOG=$(echo "$OPTIONS_LOG" | sed 's/[, ]*$//')
-CONTAINER_NETWORKS=$(docker_container_get_networks "$CONTAINER_ID")
-while read NETWORK_ID; do
-    NETWORK_INTERFACE_NAMES=$(docker_container_interfaces_in_network "$CONTAINER_ID" "$NETWORK_ID")
-    if [ -z "$NETWORK_INTERFACE_NAMES" ]; then
+CONTAINER_NETWORK_INTERFACES=$(docker_container_get_interfaces "$CONTAINER_ID")
+
+while read CONTAINER_NETWORK_INTERFACE; do
+
+    if [ -z "$CONTAINER_NETWORK_INTERFACE" ]; then
         continue
     fi
-    while IFS= read -r NETWORK_INTERFACE_NAME; do
-        tc_init
-        qdisc_del "$NETWORK_INTERFACE_NAME"
-        if [ ! -z "$NETM_OPTIONS" ]; then
-            qdisc_netm "$NETWORK_INTERFACE_NAME" $NETM_OPTIONS
-        fi
-        if [ ! -z "$TBF_OPTIONS" ]; then
-            qdisc_tbf "$NETWORK_INTERFACE_NAME" $TBF_OPTIONS
-        fi
-        echo "Set ${OPTIONS_LOG} on $NETWORK_INTERFACE_NAME"
-        echo "Controlling traffic of the container $(docker_container_get_name "$CONTAINER_ID") on $NETWORK_INTERFACE_NAME"
-    done < <(echo -e "$NETWORK_INTERFACE_NAMES")
-done < <(echo -e "$CONTAINER_NETWORKS")
+    tc_init
+    qdisc_del "$CONTAINER_NETWORK_INTERFACE"
+    if [ ! -z "$NETM_OPTIONS" ]; then
+        qdisc_netm "$CONTAINER_NETWORK_INTERFACE" $NETM_OPTIONS
+    fi
+    if [ ! -z "$TBF_OPTIONS" ]; then
+        qdisc_tbf "$CONTAINER_NETWORK_INTERFACE" $TBF_OPTIONS
+    fi
+    echo "Set ${OPTIONS_LOG} on $CONTAINER_NETWORK_INTERFACE"
+    echo "Controlling traffic of the container $(docker_container_get_name "$CONTAINER_ID") on $CONTAINER_NETWORK_INTERFACE"
+done < <(echo -e "$CONTAINER_NETWORK_INTERFACES")
+
 block "$CONTAINER_ID"
 http_response 200
