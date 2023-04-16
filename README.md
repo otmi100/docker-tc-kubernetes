@@ -10,7 +10,61 @@ Credits also go to [TSchellien](https://github.com/lukaszlach/docker-tc/issues/7
 
 **Docker Traffic Control** allows to set a rate limit on the container network and can emulate network conditions like delay, packet loss, duplication, and corrupt for the Docker containers, all that basing only on labels. [HTTP API](#http-api) allows to [fetch](#get) and [pause](#delete) existing rules and to [manually overwrite](#post) them, [command-line interface](#command-line) is also available. **Project is written entirely in Bash** and is distributed as a [Docker image](https://hub.docker.com/r/lukaszlach/docker-tc/).
 
+## Current Features / Known Bugs
+
+Only HTTP POST Features are implemented. 
+Do NOT use docker-tc labels on POD containers. As they cannot be controlled by docker-tc (missing sh), docker-tc will go into crashloopback.
+
 ## Running
+
+Kubernetes YAML Example
+```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: network-control
+  namespace: dssim
+spec:
+  selector:
+    matchLabels:
+      name: network-control
+  template:
+    metadata:
+      labels:
+        name: network-control
+    spec:
+      containers:
+      - image: registry.gitlab.cc-asp.fraunhofer.de/dssim/docker-tc-kubernetes/docker-tc-kubernetes:latest
+        imagePullPolicy: Always
+        name: network-control
+        ports:
+        - containerPort: 4080
+          hostPort: 4080
+          name: httpd
+          protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            add:
+            - NET_ADMIN
+          privileged: false
+          readOnlyRootFilesystem: false
+        volumeMounts:
+        - mountPath: /var/run/docker.sock
+          name: dockersocket
+        - mountPath: /var/docker-tc
+          name: docker-tc
+      hostNetwork: true
+      volumes:
+      - hostPath:
+          path: /var/run/docker.sock
+          type: ""
+        name: dockersocket
+      - hostPath:
+          path: /var/docker-tc
+          type: ""
+        name: docker-tc
+```
 
 First run Docker Traffic Control daemon in Docker. The container needs `NET_ADMIN` capability and the `host` network mode to manage network interfaces on the host system, `/var/run/docker.sock` volume allows to observe Docker events and query container details.
 

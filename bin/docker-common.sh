@@ -28,7 +28,7 @@ docker_container_get_interfaces() {
     RESULT=""
     while IFS= read -r IFLINK; do
         if [[ "$IFLINK" -gt "1" ]]; then
-            IFACE=$(grep -l $IFLINK /sys/class/net/cali*/ifindex | sed -e 's;^.*net/\(.*\)/ifindex$;\1;')
+            IFACE=$(grep -l $IFLINK /sys/class/net/$IFPREFIX*/ifindex | sed -e 's;^.*net/\(.*\)/ifindex$;\1;')
             if [ -n "$IFACE" ]; then
                 RESULT+="${IFACE}\n"
             fi
@@ -39,7 +39,7 @@ docker_container_get_interfaces() {
 docker_network_get_interfaces() {
     NETWORK_ID=$(docker network inspect --format '{{ .Id }}' "$1")
     SHORT_NETWORK_ID=$(echo -n "$NETWORK_ID" | head -c 12)
-    NETWORK_INTERFACE_NAMES=$(ip a | grep -E "cali.*br-$SHORT_NETWORK_ID" | grep -o 'cali[^@]*' || :)
+    NETWORK_INTERFACE_NAMES=$(ip a | grep -E "$IFPREFIX.*br-$SHORT_NETWORK_ID" | grep -o "$IFPREFIX[^@]*" || :)
     if [ -z "$NETWORK_INTERFACE_NAMES" ]; then
         return 1
     fi
