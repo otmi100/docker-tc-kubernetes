@@ -6,6 +6,7 @@ export PROC_ROOT="$FIXTURES/proc"
 export PATH="$PWD/test/stubs:$PATH"
 export TC_LOG=$(mktemp)
 CID_FULL=aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899
+CID_NOIF=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 PASS=0; FAIL=0
 assert_eq() { # <desc> <expected> <actual>
@@ -80,6 +81,14 @@ assert_contains "DELETE clears the in-pod qdisc" \
 
 OUT=$(bash bin/http-delete.sh deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef 2>&1); RC=$?
 assert_eq "DELETE for unknown container fails" "1" "$RC"
+
+OUT=$(bash bin/http-delete.sh "$CID_NOIF" 2>&1); RC=$?
+assert_eq "DELETE with no shapeable interfaces fails" "1" "$RC"
+assert_contains "DELETE no-interfaces explains itself" "no shapeable interfaces" "$OUT"
+
+reset_log
+OUT=$(TC_FAIL=1 bash bin/http-delete.sh "$CID_FULL" 2>&1); RC=$?
+assert_eq "DELETE tolerates tc failure (idempotent clearing)" "0" "$RC"
 
 # --- http-get.sh ---
 reset_log
