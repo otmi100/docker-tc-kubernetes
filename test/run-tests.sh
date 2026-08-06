@@ -32,6 +32,38 @@ assert_eq "container_interfaces honors matching IFPREFIX" \
 assert_eq "container_interfaces filters non-matching IFPREFIX" \
     "" "$(IFPREFIX=veth container_interfaces 4242)"
 
+# --- http-post.sh ---
+reset_log
+OUT=$(bash bin/http-post.sh "$CID_FULL" "dir=in&rate=56kbit" 2>&1); RC=$?
+assert_eq "POST dir=in exits 0" "0" "$RC"
+assert_contains "POST dir=in shapes the host veth with tbf" \
+    "host tc qdisc add dev cali0123abcd root handle 1: tbf burst 5kb latency 50ms rate 56kbit" \
+    "$(cat "$TC_LOG")"
+
+reset_log
+OUT=$(bash bin/http-post.sh "$CID_FULL" "dir=out&delay=10ms" 2>&1); RC=$?
+assert_eq "POST dir=out exits 0" "0" "$RC"
+assert_contains "POST dir=out shapes eth0 inside the pod netns" \
+    "netns:4242 tc qdisc add dev eth0 root handle 1: netem delay 10ms" \
+    "$(cat "$TC_LOG")"
+
+reset_log
+OUT=$(bash bin/http-post.sh "$CID_FULL" "dir=in&delay=10ms&rate=1mbit" 2>&1)
+assert_contains "netem and tbf are chained (netem root)" \
+    "host tc qdisc add dev cali0123abcd root handle 1: netem delay 10ms" \
+    "$(cat "$TC_LOG")"
+assert_contains "netem and tbf are chained (tbf parent 1:)" \
+    "host tc qdisc add dev cali0123abcd parent 1: handle 2: tbf burst 5kb latency 50ms rate 1mbit" \
+    "$(cat "$TC_LOG")"
+
+OUT=$(bash bin/http-post.sh "$CID_FULL" "rate=56kbit" 2>&1); RC=$?
+assert_eq "POST without dir fails" "1" "$RC"
+assert_contains "POST without dir explains itself" "dir=in|out is required" "$OUT"
+
+OUT=$(bash bin/http-post.sh deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef "dir=in&rate=1mbit" 2>&1); RC=$?
+assert_eq "POST for unknown container fails" "1" "$RC"
+assert_contains "POST for unknown container explains itself" "not found" "$OUT"
+
 echo "-----------------------------"
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
