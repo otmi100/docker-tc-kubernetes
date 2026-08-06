@@ -64,6 +64,11 @@ OUT=$(bash bin/http-post.sh deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdead
 assert_eq "POST for unknown container fails" "1" "$RC"
 assert_contains "POST for unknown container explains itself" "not found" "$OUT"
 
+reset_log
+OUT=$(TC_FAIL=1 bash bin/http-post.sh "$CID_FULL" "dir=in&rate=56kbit" 2>&1); RC=$?
+assert_eq "POST fails when tc fails" "1" "$RC"
+assert_contains "POST tc failure explains itself" "tc tbf failed" "$OUT"
+
 echo "-----------------------------"
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
