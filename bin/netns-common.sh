@@ -9,6 +9,15 @@ fail() {
     exit 1
 }
 
+# require_container_id <id> — lowercase hex, >=12 chars. Anything else aborts
+# before the substring grep can match an arbitrary cgroup line ("" -> PID 1).
+require_container_id() {
+    case "$1" in
+        *[!0-9a-f]*|'') fail "invalid container id '$1'" ;;
+    esac
+    [ ${#1} -ge 12 ] || fail "container id too short: '$1'"
+}
+
 # container_pid <container-id>
 # Any PID inside the container (all share its netns). Every CRI runtime embeds
 # the full container ID in the cgroup path (cri-containerd-<id>.scope under the

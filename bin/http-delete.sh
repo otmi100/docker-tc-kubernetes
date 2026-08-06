@@ -4,6 +4,7 @@ BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$BIN_DIR/http-common.sh"
 . "$BIN_DIR/tc-common.sh"
 CONTAINER_ID=$(http_safe_param "$1")
+require_container_id "$CONTAINER_ID"
 PID=$(container_pid "$CONTAINER_ID")
 if [ -z "$PID" ]; then
     fail "container $CONTAINER_ID not found on this node"

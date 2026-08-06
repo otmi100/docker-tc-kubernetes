@@ -6,6 +6,7 @@ BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$BIN_DIR/http-common.sh"
 . "$BIN_DIR/tc-common.sh"
 CONTAINER_ID=$(http_safe_param "$1")
+require_container_id "$CONTAINER_ID"
 QUERY="$2"
 PID=$(container_pid "$CONTAINER_ID")
 if [ -z "$PID" ]; then
@@ -19,7 +20,7 @@ while read -r QUERY_PARAM; do
     FIELD=$(echo "$QUERY_PARAM" | cut -d= -f1)
     VALUE=$(echo "$QUERY_PARAM" | cut -d= -f2-)
     FIELD=$(http_safe_param "$FIELD")
-    VALUE=$(echo "$VALUE" | sed 's/[^a-zA-Z0-9%-_]//g')
+    VALUE=$(echo "$VALUE" | sed 's/[^a-zA-Z0-9%_.-]//g')
     case "$FIELD" in
         dir)
             DIR="$VALUE"

@@ -27,6 +27,9 @@ Served by [hapttic](https://github.com/jsoendermann/hapttic) on
 Errors (unknown container, missing `dir`, tc failure) return a non-2xx
 response.
 
+Non-2xx responses carry a generic body; the actual error is in the DaemonSet
+pod's log: `kubectl logs -l name=network-control`.
+
 ## Configuration
 
 | Env | Meaning |

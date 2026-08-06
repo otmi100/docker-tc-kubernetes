@@ -97,6 +97,15 @@ assert_eq "GET exits 0" "0" "$RC"
 assert_contains "GET shows the ingress (host) qdisc" "ingress cali0123abcd: host-qdisc-stub-output" "$OUT"
 assert_contains "GET shows the egress (pod) qdisc" "egress eth0: netns-qdisc-stub-output" "$OUT"
 
+OUT=$(bash bin/http-post.sh "" "dir=in&rate=1mbit" 2>&1); RC=$?
+assert_eq "POST with empty container id fails" "1" "$RC"
+
+OUT=$(bash bin/http-delete.sh "zz" 2>&1); RC=$?
+assert_eq "DELETE with non-hex container id fails" "1" "$RC"
+
+OUT=$(bash bin/http-get.sh "abc123" 2>&1); RC=$?
+assert_eq "GET with too-short container id fails" "1" "$RC"
+
 echo "-----------------------------"
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
