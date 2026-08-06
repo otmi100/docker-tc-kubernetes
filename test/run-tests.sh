@@ -69,6 +69,25 @@ OUT=$(TC_FAIL=1 bash bin/http-post.sh "$CID_FULL" "dir=in&rate=56kbit" 2>&1); RC
 assert_eq "POST fails when tc fails" "1" "$RC"
 assert_contains "POST tc failure explains itself" "tc tbf failed" "$OUT"
 
+# --- http-delete.sh ---
+reset_log
+OUT=$(bash bin/http-delete.sh "$CID_FULL" 2>&1); RC=$?
+assert_eq "DELETE exits 0" "0" "$RC"
+assert_contains "DELETE clears the host veth qdisc" \
+    "host tc qdisc del dev cali0123abcd root" "$(cat "$TC_LOG")"
+assert_contains "DELETE clears the in-pod qdisc" \
+    "netns:4242 tc qdisc del dev eth0 root" "$(cat "$TC_LOG")"
+
+OUT=$(bash bin/http-delete.sh deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef 2>&1); RC=$?
+assert_eq "DELETE for unknown container fails" "1" "$RC"
+
+# --- http-get.sh ---
+reset_log
+OUT=$(bash bin/http-get.sh "$CID_FULL" 2>&1); RC=$?
+assert_eq "GET exits 0" "0" "$RC"
+assert_contains "GET shows the ingress (host) qdisc" "ingress cali0123abcd: host-qdisc-stub-output" "$OUT"
+assert_contains "GET shows the egress (pod) qdisc" "egress eth0: netns-qdisc-stub-output" "$OUT"
+
 echo "-----------------------------"
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
