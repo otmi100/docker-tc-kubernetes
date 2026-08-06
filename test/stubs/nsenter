@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Fake nsenter for tests. Real call shape: nsenter -t <pid> -n <cmd> [args...]
+PID="$2"
+shift 3
+CMD="$1"
+shift
+case "$CMD" in
+    ip)
+        cat "$FIXTURES/netns-$PID-links.txt" 2>/dev/null || exit 1
+        ;;
+    tc)
+        echo "netns:$PID tc $*" >> "$TC_LOG"
+        if [ "$1" = "qdisc" ] && [ "$2" = "show" ]; then
+            echo "netns-qdisc-stub-output"
+        fi
+        ;;
+    *)
+        exit 1
+        ;;
+esac

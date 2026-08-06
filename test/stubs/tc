@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+echo "host tc $*" >> "$TC_LOG"
+if [ "$1" = "qdisc" ] && [ "$2" = "show" ]; then
+    echo "host-qdisc-stub-output"
+fi
