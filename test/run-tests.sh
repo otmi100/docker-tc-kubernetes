@@ -14,8 +14,13 @@ assert_eq() { # <desc> <expected> <actual>
         FAIL=$((FAIL+1)); echo "FAIL - $1"; echo "    expected: [$2]"; echo "    actual:   [$3]"; fi
 }
 assert_contains() { # <desc> <needle> <haystack>
-    if echo "$3" | grep -qF "$2"; then PASS=$((PASS+1)); echo "ok - $1"; else
+    if echo "$3" | grep -qF -- "$2"; then PASS=$((PASS+1)); echo "ok - $1"; else
         FAIL=$((FAIL+1)); echo "FAIL - $1"; echo "    expected to contain: [$2]"; echo "    actual: [$3]"; fi
+}
+assert_not_contains() { # <desc> <needle> <haystack>
+    if echo "$3" | grep -qF -- "$2"; then
+        FAIL=$((FAIL+1)); echo "FAIL - $1"; echo "    expected NOT to contain: [$2]"; echo "    actual: [$3]"; else
+        PASS=$((PASS+1)); echo "ok - $1"; fi
 }
 reset_log() { : > "$TC_LOG"; }
 
@@ -106,6 +111,122 @@ assert_eq "DELETE with non-hex container id fails" "1" "$RC"
 OUT=$(bash bin/http-get.sh "abc123" 2>&1); RC=$?
 assert_eq "GET with too-short container id fails" "1" "$RC"
 
+
+# --- preflight.sh ---
+reset_log
+OUT=$(bash bin/preflight.sh 2>&1); RC=$?
+assert_eq "preflight exits 0 when the kernel provides both qdiscs" "0" "$RC"
+assert_contains "preflight probes netem off the node's own interfaces" \
+    "host tc qdisc add dev lo root netem" "$(cat "$TC_LOG")"
+assert_contains "preflight probes tbf" \
+    "host tc qdisc add dev lo root tbf" "$(cat "$TC_LOG")"
+
+reset_log
+OUT=$(TC_UNKNOWN_QDISC=netem bash bin/preflight.sh 2>&1); RC=$?
+assert_eq "preflight fails when the kernel lacks netem" "1" "$RC"
+assert_contains "preflight names the missing qdisc" "netem" "$OUT"
+assert_contains "preflight quotes what the kernel said" \
+    "Specified qdisc kind is unknown" "$OUT"
+assert_contains "preflight points at the missing package" "modules-extra" "$OUT"
+
+reset_log
+OUT=$(TC_UNKNOWN_QDISC=tbf bash bin/preflight.sh 2>&1); RC=$?
+assert_eq "preflight fails when the kernel lacks tbf" "1" "$RC"
+assert_contains "preflight names tbf as the missing qdisc" "tbf" "$OUT"
+
+reset_log
+OUT=$(UNSHARE_FAIL=1 bash bin/preflight.sh 2>&1); RC=$?
+assert_eq "preflight does not block startup when it cannot isolate" "0" "$RC"
+assert_contains "preflight says why it skipped" "skipping" "$OUT"
+assert_eq "preflight probes nothing when it cannot isolate" "" "$(cat "$TC_LOG")"
+
+# --- entrypoint.sh ---
+reset_log
+OUT=$(HTTP_BIND=127.0.0.1 HTTP_PORT=4080 bash bin/entrypoint.sh 2>&1); RC=$?
+assert_eq "entrypoint exits 0 when preflight passes" "0" "$RC"
+assert_contains "entrypoint starts the server after preflight" "hapttic started" "$OUT"
+assert_contains "entrypoint expands the listen address at runtime" \
+    "-host 127.0.0.1 -port 4080" "$OUT"
+
+reset_log
+OUT=$(TC_UNKNOWN_QDISC=netem bash bin/entrypoint.sh 2>&1); RC=$?
+assert_eq "entrypoint aborts when preflight fails" "1" "$RC"
+assert_not_contains "entrypoint never starts the server on preflight failure" \
+    "hapttic started" "$OUT"
+
+# --- command tracing (run-common.sh) ---
+reset_log
+ERR=$(bash bin/http-post.sh "$CID_FULL" "dir=in&delay=10ms&rate=1mbit" 2>&1 >/dev/null)
+assert_contains "traces the clearing command" \
+    "+ tc qdisc del dev cali0123abcd root" "$ERR"
+assert_contains "traces the netem command with handle and options" \
+    "+ tc qdisc add dev cali0123abcd root handle 1: netem delay 10ms" "$ERR"
+assert_contains "traces the tbf command with its parent" \
+    "+ tc qdisc add dev cali0123abcd parent 1: handle 2: tbf burst 5kb latency 50ms rate 1mbit" \
+    "$ERR"
+
+reset_log
+BODY=$(bash bin/http-post.sh "$CID_FULL" "dir=in&delay=10ms" 2>/dev/null)
+assert_contains "a successful POST still answers with its summary" "Set dir=in" "$BODY"
+assert_not_contains "the trace stays out of the response body" "+ tc" "$BODY"
+
+reset_log
+OUT=$(TC_FAIL=1 bash bin/http-post.sh "$CID_FULL" "dir=in&delay=3ms" 2>&1)
+assert_contains "a failed netem reports the exact command" \
+    "Error: command failed (exit 1): tc qdisc add dev cali0123abcd root handle 1: netem delay 3ms" \
+    "$OUT"
+assert_contains "a failed netem still names the interface and stage" \
+    "tc netem failed on cali0123abcd" "$OUT"
+assert_not_contains "the idempotent clear stays quiet when it fails" \
+    "command failed (exit 1): tc qdisc del" "$OUT"
+
+reset_log
+OUT=$(TC_FAIL=1 bash bin/http-post.sh "$CID_FULL" "dir=in&rate=56kbit" 2>&1)
+assert_contains "a failed tbf reports the tbf command, not the netem one" \
+    "Error: command failed (exit 1): tc qdisc add dev cali0123abcd root handle 1: tbf burst 5kb latency 50ms rate 56kbit" \
+    "$OUT"
+
+reset_log
+OUT=$(TC_FAIL=1 bash bin/http-post.sh "$CID_FULL" "dir=out&delay=10ms" 2>&1)
+assert_contains "a failed in-pod command shows the nsenter prefix" \
+    "Error: command failed (exit 1): nsenter -t 4242 -n tc qdisc add dev eth0 root handle 1: netem delay 10ms" \
+    "$OUT"
+
+reset_log
+OUT=$(NSENTER_FAIL=1 bash bin/http-post.sh "$CID_FULL" "dir=in&delay=10ms" 2>&1)
+assert_contains "an unenterable netns reports the nsenter command" \
+    "nsenter -t 4242 -n ip -o link show" "$OUT"
+assert_contains "an unenterable netns surfaces what nsenter said" \
+    "No such file or directory" "$OUT"
+
+reset_log
+OUT=$(TC_UNKNOWN_QDISC=netem bash bin/preflight.sh 2>&1)
+assert_contains "a failed preflight probe names the command it ran" \
+    "tc qdisc add dev lo root netem delay 1ms" "$OUT"
+
+# --- a failed inspection is not "no interfaces" ---
+reset_log
+OUT=$(NSENTER_FAIL=1 bash bin/http-post.sh "$CID_FULL" "dir=in&delay=10ms" 2>&1); RC=$?
+assert_eq "POST fails when the netns cannot be inspected" "1" "$RC"
+assert_not_contains "POST does not blame missing interfaces for an nsenter failure" \
+    "no shapeable interfaces" "$OUT"
+assert_contains "POST says the inspection itself failed" \
+    "cannot inspect container" "$OUT"
+
+reset_log
+OUT=$(NSENTER_FAIL=1 bash bin/http-delete.sh "$CID_FULL" 2>&1); RC=$?
+assert_eq "DELETE fails when the netns cannot be inspected" "1" "$RC"
+assert_not_contains "DELETE does not blame missing interfaces for an nsenter failure" \
+    "no shapeable interfaces" "$OUT"
+
+reset_log
+OUT=$(NSENTER_FAIL=1 bash bin/http-get.sh "$CID_FULL" 2>&1); RC=$?
+assert_eq "GET fails when the netns cannot be inspected" "1" "$RC"
+assert_contains "GET says the inspection itself failed" "cannot inspect container" "$OUT"
+
+OUT=$(bash bin/http-get.sh "$CID_NOIF" 2>&1); RC=$?
+assert_eq "GET with no shapeable interfaces fails" "1" "$RC"
+assert_contains "GET no-interfaces explains itself" "no shapeable interfaces" "$OUT"
 echo "-----------------------------"
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -2,6 +2,7 @@
 # Socketless container resolution: works on containerd, CRI-O and cri-dockerd
 # without any runtime socket. Requires hostPID + nsenter (util-linux).
 # PROC_ROOT is a test seam; IFPREFIX optionally filters host-side veth names.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-common.sh"
 PROC_ROOT="${PROC_ROOT:-/proc}"
 
 fail() {
@@ -35,8 +36,8 @@ container_pid() {
 container_interfaces() {
     local pid="$1"
     local links host_links
-    links=$(nsenter -t "$pid" -n ip -o link show) || return 1
-    host_links=$(ip -o link show)
+    links=$(run_logged nsenter -t "$pid" -n ip -o link show) || return 1
+    host_links=$(run_logged ip -o link show) || return 1
     local line name peer host_if
     while IFS= read -r line; do
         name=$(echo "$line" | awk -F': ' '{print $2}' | cut -d@ -f1)
