@@ -14,8 +14,13 @@ assert_eq() { # <desc> <expected> <actual>
         FAIL=$((FAIL+1)); echo "FAIL - $1"; echo "    expected: [$2]"; echo "    actual:   [$3]"; fi
 }
 assert_contains() { # <desc> <needle> <haystack>
-    if echo "$3" | grep -qF "$2"; then PASS=$((PASS+1)); echo "ok - $1"; else
+    if echo "$3" | grep -qF -- "$2"; then PASS=$((PASS+1)); echo "ok - $1"; else
         FAIL=$((FAIL+1)); echo "FAIL - $1"; echo "    expected to contain: [$2]"; echo "    actual: [$3]"; fi
+}
+assert_not_contains() { # <desc> <needle> <haystack>
+    if echo "$3" | grep -qF -- "$2"; then
+        FAIL=$((FAIL+1)); echo "FAIL - $1"; echo "    expected NOT to contain: [$2]"; echo "    actual: [$3]"; else
+        PASS=$((PASS+1)); echo "ok - $1"; fi
 }
 reset_log() { : > "$TC_LOG"; }
 
@@ -106,6 +111,48 @@ assert_eq "DELETE with non-hex container id fails" "1" "$RC"
 OUT=$(bash bin/http-get.sh "abc123" 2>&1); RC=$?
 assert_eq "GET with too-short container id fails" "1" "$RC"
 
+
+# --- preflight.sh ---
+reset_log
+OUT=$(bash bin/preflight.sh 2>&1); RC=$?
+assert_eq "preflight exits 0 when the kernel provides both qdiscs" "0" "$RC"
+assert_contains "preflight probes netem off the node's own interfaces" \
+    "host tc qdisc add dev lo root netem" "$(cat "$TC_LOG")"
+assert_contains "preflight probes tbf" \
+    "host tc qdisc add dev lo root tbf" "$(cat "$TC_LOG")"
+
+reset_log
+OUT=$(TC_UNKNOWN_QDISC=netem bash bin/preflight.sh 2>&1); RC=$?
+assert_eq "preflight fails when the kernel lacks netem" "1" "$RC"
+assert_contains "preflight names the missing qdisc" "netem" "$OUT"
+assert_contains "preflight quotes what the kernel said" \
+    "Specified qdisc kind is unknown" "$OUT"
+assert_contains "preflight points at the missing package" "modules-extra" "$OUT"
+
+reset_log
+OUT=$(TC_UNKNOWN_QDISC=tbf bash bin/preflight.sh 2>&1); RC=$?
+assert_eq "preflight fails when the kernel lacks tbf" "1" "$RC"
+assert_contains "preflight names tbf as the missing qdisc" "tbf" "$OUT"
+
+reset_log
+OUT=$(UNSHARE_FAIL=1 bash bin/preflight.sh 2>&1); RC=$?
+assert_eq "preflight does not block startup when it cannot isolate" "0" "$RC"
+assert_contains "preflight says why it skipped" "skipping" "$OUT"
+assert_eq "preflight probes nothing when it cannot isolate" "" "$(cat "$TC_LOG")"
+
+# --- entrypoint.sh ---
+reset_log
+OUT=$(HTTP_BIND=127.0.0.1 HTTP_PORT=4080 bash bin/entrypoint.sh 2>&1); RC=$?
+assert_eq "entrypoint exits 0 when preflight passes" "0" "$RC"
+assert_contains "entrypoint starts the server after preflight" "hapttic started" "$OUT"
+assert_contains "entrypoint expands the listen address at runtime" \
+    "-host 127.0.0.1 -port 4080" "$OUT"
+
+reset_log
+OUT=$(TC_UNKNOWN_QDISC=netem bash bin/entrypoint.sh 2>&1); RC=$?
+assert_eq "entrypoint aborts when preflight fails" "1" "$RC"
+assert_not_contains "entrypoint never starts the server on preflight failure" \
+    "hapttic started" "$OUT"
 echo "-----------------------------"
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Fake unshare for tests. Real call shape: unshare -n <cmd> [args...]
+# UNSHARE_FAIL simulates a node/seccomp profile that forbids new namespaces.
+if [ -n "${UNSHARE_FAIL:-}" ]; then
+    echo "unshare: unshare failed: Operation not permitted" >&2
+    exit 1
+fi
+[ "$1" = "-n" ] || exit 1
+shift
+exec "$@"

@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 echo "host tc $*" >> "$TC_LOG"
+# TC_UNKNOWN_QDISC=<kind> reproduces a kernel with that qdisc missing: tc parses
+# fine, the kernel rejects the netlink request with its own extack message.
+if [ -n "${TC_UNKNOWN_QDISC:-}" ]; then
+    for arg in "$@"; do
+        if [ "$arg" = "$TC_UNKNOWN_QDISC" ]; then
+            echo "Error: Specified qdisc kind is unknown." >&2
+            exit 1
+        fi
+    done
+fi
 if [ -n "${TC_FAIL:-}" ]; then exit 1; fi
 if [ "$1" = "qdisc" ] && [ "$2" = "show" ]; then
     echo "host-qdisc-stub-output"
