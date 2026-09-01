@@ -44,7 +44,9 @@ if [ -z "$NETM_OPTIONS" ] && [ -z "$TBF_OPTIONS" ]; then
     fail "nothing to do: no rate/delay/loss/duplicate/corrupt given"
 fi
 OPTIONS_LOG=$(echo "$OPTIONS_LOG" | sed 's/[, ]*$//')
-INTERFACE_PAIRS=$(container_interfaces "$PID")
+if ! INTERFACE_PAIRS=$(container_interfaces "$PID"); then
+    fail "cannot inspect container $CONTAINER_ID (pid $PID) - see the command above"
+fi
 if [ -z "$INTERFACE_PAIRS" ]; then
     fail "no shapeable interfaces found for container $CONTAINER_ID (pid $PID)"
 fi
@@ -57,7 +59,7 @@ while read -r POD_IF HOST_IF; do
         TARGET_IF="$POD_IF"
     fi
     tc_init
-    qdisc_del "$TARGET_IF" 2>/dev/null || true
+    qdisc_del "$TARGET_IF"
     if [ -n "$NETM_OPTIONS" ]; then
         qdisc_netm "$TARGET_IF" $NETM_OPTIONS || fail "tc netem failed on $TARGET_IF"
     fi

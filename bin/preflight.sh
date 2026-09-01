@@ -16,7 +16,7 @@ UNSHARE="${UNSHARE:-unshare}"
 # Only a probe that actually ran is evidence. If the namespace itself is
 # refused (seccomp profile, missing CAP_SYS_ADMIN) we know nothing about the
 # qdiscs, and stranding an otherwise healthy node would be worse than silence.
-if ! $UNSHARE -n true 2>/dev/null; then
+if ! run_optional $UNSHARE -n true; then
     echo "Warning: cannot create a probe network namespace - skipping qdisc preflight" >&2
     exit 0
 fi
@@ -24,7 +24,7 @@ fi
 for PROBE in "netem delay 1ms" "tbf rate 1mbit burst 5kb latency 50ms"; do
     set -- $PROBE
     KIND="$1"
-    if ! OUTPUT=$($UNSHARE -n tc qdisc add dev lo root "$@" 2>&1); then
+    if ! OUTPUT=$(run_logged_merged $UNSHARE -n tc qdisc add dev lo root "$@"); then
         fail "this node's kernel cannot provide the '$KIND' qdisc (sch_$KIND).
   tc: $OUTPUT
   sch_netem/sch_tbf usually ship in a separate package that minimal node images

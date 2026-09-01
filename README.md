@@ -30,6 +30,25 @@ response.
 Non-2xx responses carry a generic body; the actual error is in the DaemonSet
 pod's log: `kubectl logs -l name=network-control`.
 
+### Command tracing
+
+Every command the shaping scripts run is echoed to the pod log as it executes,
+prefixed with `+`. A failure adds the exact argv and whatever the command itself
+said, so the kernel's message is never orphaned from the invocation that
+produced it:
+
+```
++ tc qdisc del dev cali2422b6f36de root
++ tc qdisc add dev cali2422b6f36de root handle 1: netem delay 3ms
+Error: Specified qdisc kind is unknown.
+Error: command failed (exit 1): tc qdisc add dev cali2422b6f36de root handle 1: netem delay 3ms
+Error: tc netem failed on cali2422b6f36de
+```
+
+For `dir=out` the trace carries the `nsenter -t <pid> -n tc` prefix, so it is
+clear the command ran inside the pod's network namespace. Tracing goes to
+stderr only — response bodies are unaffected.
+
 ## Configuration
 
 | Env | Meaning |

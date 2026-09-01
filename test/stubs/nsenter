@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # Fake nsenter for tests. Real call shape: nsenter -t <pid> -n <cmd> [args...]
+# NSENTER_FAIL simulates a pod whose network namespace cannot be entered.
+if [ -n "${NSENTER_FAIL:-}" ]; then
+    echo "nsenter: cannot open /proc/$2/ns/net: No such file or directory" >&2
+    exit 1
+fi
 PID="$2"
 shift 3
 CMD="$1"
@@ -10,6 +15,7 @@ case "$CMD" in
         ;;
     tc)
         echo "netns:$PID tc $*" >> "$TC_LOG"
+        if [ -n "${TC_FAIL:-}" ]; then exit 1; fi
         if [ "$1" = "qdisc" ] && [ "$2" = "show" ]; then
             echo "netns-qdisc-stub-output"
         fi
