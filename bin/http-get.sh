@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
-. /docker-tc/bin/docker-common.sh
-. /docker-tc/bin/http-common.sh
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$BIN_DIR/netns-common.sh"
+. "$BIN_DIR/http-common.sh"
 CONTAINER_ID=$(http_safe_param "$1")
-if ! docker_container_is_running "$CONTAINER_ID"; then
-    http_response 400 "$CONTAINER_ID is not running"
+require_container_id "$CONTAINER_ID"
+PID=$(container_pid "$CONTAINER_ID")
+if [ -z "$PID" ]; then
+    fail "container $CONTAINER_ID not found on this node"
 fi
-CONTAINER_NETWORKS=$(docker_container_get_networks "$CONTAINER_ID")
 RESULT=
-while read NETWORK_ID; do
-    NETWORK_INTERFACE_NAMES=$(docker_container_interfaces_in_network "$CONTAINER_ID" "$NETWORK_ID")
-    if [ -z "$NETWORK_INTERFACE_NAMES" ]; then
-        continue
-    fi
-    while IFS= read -r NETWORK_INTERFACE_NAME; do
-        RESULT="$RESULT$(tc qdisc show dev "$NETWORK_INTERFACE_NAME" 2>&1)"
-    done < <(echo -e "$NETWORK_INTERFACE_NAMES")
-done < <(echo -e "$CONTAINER_NETWORKS")
+while read -r POD_IF HOST_IF; do
+    RESULT+="ingress $HOST_IF: $(tc qdisc show dev "$HOST_IF" 2>&1)\n"
+    RESULT+="egress $POD_IF: $(nsenter -t "$PID" -n tc qdisc show dev "$POD_IF" 2>&1)\n"
+done < <(container_interfaces "$PID")
 http_response 200 "$RESULT"

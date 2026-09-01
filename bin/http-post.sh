@@ -1,23 +1,30 @@
 #!/usr/bin/env bash
-. /docker-tc/bin/docker-common.sh
-. /docker-tc/bin/http-common.sh
-. /docker-tc/bin/tc-common.sh
-. /docker-tc/bin/core.sh
+# dirname-relative sourcing: works at /docker-tc/bin in the image and from the
+# repo checkout in the local test harness.
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$BIN_DIR/netns-common.sh"
+. "$BIN_DIR/http-common.sh"
+. "$BIN_DIR/tc-common.sh"
 CONTAINER_ID=$(http_safe_param "$1")
+require_container_id "$CONTAINER_ID"
 QUERY="$2"
-if ! docker_container_is_running "$CONTAINER_ID"; then
-    http_response 400 "$CONTAINER_ID is not running"
+PID=$(container_pid "$CONTAINER_ID")
+if [ -z "$PID" ]; then
+    fail "container $CONTAINER_ID not found on this node"
 fi
-CONTAINER_ID=$(docker_container_get_short_id "$CONTAINER_ID")
+DIR=
 NETM_OPTIONS=
 TBF_OPTIONS=
 OPTIONS_LOG=
-while read QUERY_PARAM; do
+while read -r QUERY_PARAM; do
     FIELD=$(echo "$QUERY_PARAM" | cut -d= -f1)
     VALUE=$(echo "$QUERY_PARAM" | cut -d= -f2-)
     FIELD=$(http_safe_param "$FIELD")
-    VALUE=$(echo "$VALUE" | sed 's/[^a-zA-Z0-9%-_]//g')
+    VALUE=$(echo "$VALUE" | sed 's/[^a-zA-Z0-9%_.-]//g')
     case "$FIELD" in
+        dir)
+            DIR="$VALUE"
+            ;;
         delay|loss|corrupt|duplicate|reorder)
             NETM_OPTIONS+="$FIELD $VALUE "
             ;;
@@ -25,35 +32,38 @@ while read QUERY_PARAM; do
             TBF_OPTIONS+="$FIELD $VALUE "
             ;;
         *)
-            echo "Error: Invalid field $FIELD"
-            exit 1
+            fail "invalid field $FIELD"
             ;;
     esac
     OPTIONS_LOG+="$FIELD=$VALUE, "
 done < <(echo "$QUERY" | tr '&' $'\n')
+if [ "$DIR" != "in" ] && [ "$DIR" != "out" ]; then
+    fail "dir=in|out is required"
+fi
 if [ -z "$NETM_OPTIONS" ] && [ -z "$TBF_OPTIONS" ]; then
-    echo "Notice: Nothing to do"
-    exit 0
+    fail "nothing to do: no rate/delay/loss/duplicate/corrupt given"
 fi
 OPTIONS_LOG=$(echo "$OPTIONS_LOG" | sed 's/[, ]*$//')
-CONTAINER_NETWORK_INTERFACES=$(docker_container_get_interfaces "$CONTAINER_ID")
-
-while read CONTAINER_NETWORK_INTERFACE; do
-
-    if [ -z "$CONTAINER_NETWORK_INTERFACE" ]; then
-        continue
+INTERFACE_PAIRS=$(container_interfaces "$PID")
+if [ -z "$INTERFACE_PAIRS" ]; then
+    fail "no shapeable interfaces found for container $CONTAINER_ID (pid $PID)"
+fi
+while read -r POD_IF HOST_IF; do
+    if [ "$DIR" = "in" ]; then
+        TC="tc"
+        TARGET_IF="$HOST_IF"
+    else
+        TC="nsenter -t $PID -n tc"
+        TARGET_IF="$POD_IF"
     fi
     tc_init
-    qdisc_del "$CONTAINER_NETWORK_INTERFACE"
-    if [ ! -z "$NETM_OPTIONS" ]; then
-        qdisc_netm "$CONTAINER_NETWORK_INTERFACE" $NETM_OPTIONS
+    qdisc_del "$TARGET_IF" 2>/dev/null || true
+    if [ -n "$NETM_OPTIONS" ]; then
+        qdisc_netm "$TARGET_IF" $NETM_OPTIONS || fail "tc netem failed on $TARGET_IF"
     fi
-    if [ ! -z "$TBF_OPTIONS" ]; then
-        qdisc_tbf "$CONTAINER_NETWORK_INTERFACE" $TBF_OPTIONS
+    if [ -n "$TBF_OPTIONS" ]; then
+        qdisc_tbf "$TARGET_IF" $TBF_OPTIONS || fail "tc tbf failed on $TARGET_IF"
     fi
-    echo "Set ${OPTIONS_LOG} on $CONTAINER_NETWORK_INTERFACE"
-    echo "Controlling traffic of the container $(docker_container_get_name "$CONTAINER_ID") on $CONTAINER_NETWORK_INTERFACE"
-done < <(echo -e "$CONTAINER_NETWORK_INTERFACES")
-
-block "$CONTAINER_ID"
-http_response 200
+    echo "Set dir=$DIR ${OPTIONS_LOG} on $TARGET_IF (container $CONTAINER_ID)"
+done <<< "$INTERFACE_PAIRS"
+http_response 200 "OK"
